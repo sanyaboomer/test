@@ -42,12 +42,12 @@ docker-compose up -d
 ```  
  - stop
 ```
-docker-compose stop
+docker-compose down
 ```    
 
 ### Test
 #### The project contains unit tests to test data validation and data saving
-#### To install the project please follow the instructions below 
+#### To run unit tests please follow the instructions below 
  - start the docker
  - go into the "php-fpm" container
  - run the command
@@ -63,13 +63,13 @@ php bin/phpunit tests
  - run the command with appropriate verbosity level (-vvv)
 ```
 # shows only errors
-php bin/console app:product:import --source=filename -v
+php bin/console app:product:import --source=filename.csv -v
 
 # shows errors and general information 
-php bin/console app:product:import --source=filename -vv
+php bin/console app:product:import --source=filename.csv -vv
 
 # shows errors, debug information, general information 
-php bin/console app:product:import --source=filename -vvv 
+php bin/console app:product:import --source=filename.csv -vvv 
 ```  
  
 ## Part B: Designing a more scalable solution
