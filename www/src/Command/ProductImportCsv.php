@@ -78,6 +78,13 @@ class ProductImportCsv extends Command
         $currentCountOfProducts = $productRepository->count([]);
 
         foreach ($lines as $key => $data) {
+            if (count($data) > 4) {
+                $this->logger->error(sprintf('Row #%s: more than 4 columns', $key));
+                $countErrors++;
+                continue;
+            }
+
+
             // create csv row model to validate and convert data
             $csvProduct = new CsvProduct(
                 isset($data[0]) ? $data[0] : '',
