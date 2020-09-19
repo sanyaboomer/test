@@ -27,7 +27,7 @@ class CsvProduct
      * @Assert\NotBlank(message="the SKU is empty")
      * @AppAssert\IsCleanText(message="the SKU contains html tags")
      *
-     * @ORM\Column(type="string", length=255)
+     * @ORM\Column(type="string", length=255, nullable=true)
      *
      * @var string
      */
@@ -37,7 +37,7 @@ class CsvProduct
      * @Assert\NotBlank(message="the description is empty")
      * @AppAssert\IsCleanText(message="the description contains html tags")
      *
-     * @ORM\Column(type="text")
+     * @ORM\Column(type="text", nullable=true)
      *
      * @var string
      */
@@ -51,7 +51,7 @@ class CsvProduct
      *     message="the normal price is negative"
      * )
      *
-     * @ORM\Column(type="string", length=10)
+     * @ORM\Column(type="string", length=10, nullable=true)
      *
      * @var string
      */
@@ -64,7 +64,7 @@ class CsvProduct
      *     message="the special price is negative"
      * )
      *
-     * @ORM\Column(type="string", length=10)
+     * @ORM\Column(type="string", length=10, nullable=true)
      *
      * @var string|null
      */
