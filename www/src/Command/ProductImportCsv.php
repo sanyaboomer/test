@@ -135,7 +135,7 @@ class ProductImportCsv extends Command
 
             foreach ($lines as $csvProduct) {
                 $rowNum++;
-                if ($this->hasCsvErrors($csvProduct, $rowNum)) {
+                if ($this->hasRowErrors($csvProduct, $rowNum)) {
                     continue;
                 }
 
@@ -152,9 +152,7 @@ class ProductImportCsv extends Command
                     $this->logger->debug(sprintf('Row #%d: The product "%s" is created', $rowNum, $sku));
                 } else {
                     $this->productService->updateProductFromCsv($product, $csvProduct);
-                    if (!in_array($sku, $this->summaryData['created']) && !in_array($sku, $this->summaryData['updated'])) {
-                        $this->summaryData['updated'][] = $sku;
-                    }
+                    $this->summaryData['updated'][] = $sku;
                     $this->logger->debug(sprintf('Row #%d: The product "%s" is updated', $rowNum, $sku));
                 }
             }
@@ -180,7 +178,7 @@ class ProductImportCsv extends Command
      * @param int $currentRow
      * @return int
      */
-    private function hasCsvErrors(CsvProduct $csvProduct, int $currentRow): int
+    private function hasRowErrors(CsvProduct $csvProduct, int $currentRow): int
     {
         $errors = $this->validator->validate($csvProduct);
 
@@ -190,6 +188,20 @@ class ProductImportCsv extends Command
                 $this->logger->error(sprintf('Row #%s: %s', $currentRow, $error->getMessage()));
             }
             return $errors->count();
+        }
+
+        if (in_array($csvProduct->getSku(), $this->summaryData['created'])
+            || in_array($csvProduct->getSku(), $this->summaryData['updated']))
+        {
+            $this->logger->error(
+                sprintf(
+                    'Row #%s: contains duplicate for the product "%s"',
+                    $currentRow,
+                    $csvProduct->getSku()
+                )
+            );
+
+            return 1;
         }
 
         return 0;
