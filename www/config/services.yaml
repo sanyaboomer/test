@@ -16,3 +16,10 @@ services:
     App\:
         resource: '../src/*'
         exclude: '../src/{Entity,Kernel.php}'
+
+    App\Service\CsvReader:
+        arguments:
+            - '%env(DB_HOST)%'
+            - '%env(DB_NAME)%'
+            - '%env(DB_USER)%'
+            - '%env(DB_PWD)%'

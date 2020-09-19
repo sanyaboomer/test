@@ -1,27 +1,44 @@
 <?php
 
-namespace App\Model;
+namespace App\Entity;
 
 use Symfony\Component\Validator\Constraints as Assert;
 use App\Validator\Constraints as AppAssert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
+use Doctrine\ORM\Mapping as ORM;
 
 /**
  * Represent the row of data from the CSV
  *
- * Class CsvProduct
- * @package App\Model
+ * @ORM\Entity()
  */
 class CsvProduct
 {
     /**
+     * @ORM\Id
+     * @ORM\GeneratedValue(strategy="AUTO")
+     * @ORM\Column(type="integer")
+     *
+     * @var int
+     */
+    private $id;
+
+    /**
      * @Assert\NotBlank(message="the SKU is empty")
+     * @AppAssert\IsCleanText(message="the SKU contains html tags")
+     *
+     * @ORM\Column(type="string", length=255)
+     *
      * @var string
      */
     private $sku;
 
     /**
      * @Assert\NotBlank(message="the description is empty")
+     * @AppAssert\IsCleanText(message="the description contains html tags")
+     *
+     * @ORM\Column(type="text")
+     *
      * @var string
      */
     private $description;
@@ -33,6 +50,9 @@ class CsvProduct
      *     value=0,
      *     message="the normal price is negative"
      * )
+     *
+     * @ORM\Column(type="string", length=10)
+     *
      * @var string
      */
     private $normalPrice;
@@ -43,23 +63,30 @@ class CsvProduct
      *     value=0,
      *     message="the special price is negative"
      * )
+     *
+     * @ORM\Column(type="string", length=10)
+     *
      * @var string|null
      */
     private $specialPrice;
 
     /**
+     * CsvProduct constructor.
+     * @param int $id
      * @param string $sku
      * @param string $description
      * @param string $normalPrice
-     * @param string $specialPrice
+     * @param string|null $specialPrice
      */
-    public function __construct(string $sku, string $description, string $normalPrice, ?string $specialPrice)
+    public function __construct(int $id, string $sku, string $description, string $normalPrice, ?string $specialPrice)
     {
+        $this->id = $id;
         $this->sku = $sku;
         $this->description = $description;
         $this->normalPrice = $normalPrice;
         $this->specialPrice = $specialPrice;
     }
+
 
     /**
      * Compare normal and special prices only if there are numbers
@@ -91,7 +118,7 @@ class CsvProduct
      */
     public function getSku(): string
     {
-        return htmlentities($this->sku, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return $this->sku;
     }
 
     /**
@@ -99,22 +126,22 @@ class CsvProduct
      */
     public function getDescription(): string
     {
-        return htmlentities($this->description, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        return $this->description;
     }
 
     /**
-     * @return float
+     * @return string
      */
-    public function getNormalPrice(): float
+    public function getNormalPrice(): string
     {
-        return (float)$this->normalPrice;
+        return $this->normalPrice;
     }
 
     /**
-     * @return float|null
+     * @return string|null
      */
-    public function getSpecialPrice(): ?float
+    public function getSpecialPrice(): ?string
     {
-        return $this->specialPrice !== null ? (float)$this->specialPrice : null;
+        return $this->specialPrice;
     }
 }
