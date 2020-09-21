@@ -4,7 +4,6 @@ namespace App\Command;
 
 use App\Entity\Product;
 use App\Entity\CsvProduct;
-use App\Service\CsvProductService;
 use App\Service\CsvReader;
 use App\Service\ProductService;
 use Doctrine\ORM\EntityManagerInterface;
@@ -50,20 +49,26 @@ class ProductImportCsv extends Command
     /** @var ProductService */
     private $productService;
 
-    /** @var CsvProductService */
-    private $csvProductService;
+    /** @var int  */
+    private $summaryDataCreated = 0;
 
+    /** @var int  */
+    private $summaryDataUpdated = 0;
+
+    /** @var int  */
+    private $summaryDataSkipped = 0;
+
+    /** @var int  */
+    private $summaryDataErrors = 0;
+
+    /** @var int  */
+    private $currentRowNumber = 0;
 
     /**
-     * @var array
+     * SKU of successfully created or updated products
+     * @var string[]
      */
-    private $summaryData = [
-        'count' => 0,
-        'created' => [],
-        'updated' => [],
-        'skipped' => 0,
-        'errors' => 0,
-    ];
+    private $handledSku = [];
 
     /**
      * @param LoggerInterface $logger
@@ -71,15 +76,13 @@ class ProductImportCsv extends Command
      * @param ValidatorInterface $validator
      * @param CsvReader $reader
      * @param ProductService $productService
-     * @param CsvProductService $csvProductService
      */
     public function __construct(
         LoggerInterface $logger,
         EntityManagerInterface $em,
         ValidatorInterface $validator,
         CsvReader $reader,
-        ProductService $productService,
-        CsvProductService $csvProductService
+        ProductService $productService
     ) {
         parent::__construct();
         $this->logger = $logger;
@@ -87,7 +90,6 @@ class ProductImportCsv extends Command
         $this->validator = $validator;
         $this->reader = $reader;
         $this->productService = $productService;
-        $this->csvProductService = $csvProductService;
 
         $this->productRepository = $em->getRepository(Product::class);
         $this->csvProductRepository = $em->getRepository(CsvProduct::class);
@@ -114,125 +116,140 @@ class ProductImportCsv extends Command
      */
     public function execute(InputInterface $input, OutputInterface $output): int
     {
-        $fileName = $input->getOption('source');
-
-        if (!file_exists($fileName)) {
-            throw new FileNotFoundException(sprintf('File "%s" does not exist', $fileName));
-        }
-
-        $this->em->getConnection()->getConfiguration()->setSQLLogger(null);
-        $this->logger->info('Import is started');
-        $this->reader->readContent($fileName);
-
-        // get products count before DB changes to calculate the amount of unchanged products
-        $summaryData['count'] = $this->productRepository->count([]);
+        $this->preImportData($input);
         $offset = 0;
-        $rowNum = 0;
 
-        do {
-            /** @var CsvProduct[] $lines */
-            $lines = $this->csvProductRepository->findBy([], [], self::BATCH_SIZE, $offset);
-
+        /** @var CsvProduct[] $lines */
+        while($lines = $this->csvProductRepository->findBy([], [], self::BATCH_SIZE, $offset)) {
             foreach ($lines as $csvProduct) {
-                $rowNum++;
-                if ($this->hasRowErrors($csvProduct, $rowNum)) {
+                $this->currentRowNumber++;
+                if (!$this->isDataValid($csvProduct)) {
                     continue;
                 }
 
-                $sku = $csvProduct->getSku();
-
-                /** @var Product $product */
-                $product = $this->productRepository->find($sku);
-
-                // create the new product if it does not exist
-                if(!$product){
-                    $product = $this->productService->createProductFromCsv($csvProduct);
-                    $this->em->persist($product);
-                    $this->summaryData['created'][] = $sku;
-                    $this->logger->debug(sprintf('Row #%d: The product "%s" is created', $rowNum, $sku));
-                } else {
-                    $this->productService->updateProductFromCsv($product, $csvProduct);
-                    $this->summaryData['updated'][] = $sku;
-                    $this->logger->debug(sprintf('Row #%d: The product "%s" is updated', $rowNum, $sku));
-                }
+               $this->importData($csvProduct);
             }
 
             $this->em->flush();
             $this->em->clear();
 
             $offset += self::BATCH_SIZE;
+        }
 
-        } while (count($lines) > 0);
-
-        $this->csvProductService->clearData();
-
-        $this->logSummaryData();
+        $this->logSummary();
 
         return 0;
     }
 
     /**
-     * Check if csv row contains the error and log them
+     * @param InputInterface $input
+     * @throws FileNotFoundException
+     */
+    private function preImportData(InputInterface $input): void
+    {
+        $fileName = $input->getOption('source');
+
+        if (!file_exists($fileName)) {
+            throw new FileNotFoundException(sprintf('File "%s" does not exist', $fileName));
+        }
+
+        $this->logger->info('Import is started');
+
+        // Disable the sql logger to keep memory
+        $this->em->getConnection()->getConfiguration()->setSQLLogger(null);
+
+        $this->reader->readContent($fileName);
+    }
+
+    /**
+     * @param CsvProduct $csvProduct
+     */
+    private function importData(CsvProduct $csvProduct): void
+    {
+        /** @var Product $product */
+        $product = $this->productRepository->find($csvProduct->getSku());
+
+        if(null === $product){
+            $product = $this->productService->createProductFromCsv($csvProduct);
+            $this->em->persist($product);
+
+            $this->summaryDataCreated++;
+            $this->logger->debug(sprintf('Row #%d: The product "%s" is created',  $this->currentRowNumber, $csvProduct->getSku()));
+        } elseif (!$this->productService->isProductEqualCsv($product, $csvProduct)) {
+            $this->productService->updateProductFromCsv($product, $csvProduct);
+
+            $this->summaryDataUpdated++;
+            $this->logger->debug(sprintf('Row #%d: The product "%s" is updated',  $this->currentRowNumber, $csvProduct->getSku()));
+        } else {
+            $this->summaryDataSkipped++;
+            $this->logger->debug(sprintf('Row #%d: The product "%s" is skipped',  $this->currentRowNumber, $csvProduct->getSku()));
+        }
+
+        // remember the sku to check for duplicates
+        $this->handledSku[] = $csvProduct->getSku();
+    }
+
+    /**
+     * Check if csv row contains the errors and log them
      *
      * @param CsvProduct $csvProduct
-     * @param int $currentRow
-     * @return int
+     * @return bool
      */
-    private function hasRowErrors(CsvProduct $csvProduct, int $currentRow): int
+    private function isDataValid(CsvProduct $csvProduct): bool
     {
         $errors = $this->validator->validate($csvProduct);
 
         if ($errors->count()) {
+            $msg = [];
             /** @var ConstraintViolation $error */
             foreach ($errors as $error) {
-                $this->logger->error(sprintf('Row #%s: %s', $currentRow, $error->getMessage()));
+                $msg[] = $error->getMessage();
             }
-            return $errors->count();
+
+            $this->logger->error(sprintf('Row #%s: %s', $this->currentRowNumber, implode(' | ', $msg)));
+            $this->summaryDataErrors += $errors->count();
+
+            return false;
         }
 
-        if (in_array($csvProduct->getSku(), $this->summaryData['created'])
-            || in_array($csvProduct->getSku(), $this->summaryData['updated']))
-        {
+        if (in_array($csvProduct->getSku(), $this->handledSku)) {
             $this->logger->error(
                 sprintf(
                     'Row #%s: contains duplicate for the product "%s"',
-                    $currentRow,
+                    $this->currentRowNumber,
                     $csvProduct->getSku()
                 )
             );
 
-            return 1;
+            $this->summaryDataErrors++;
+
+            return false;
         }
 
-        return 0;
+        return true;
     }
 
     /**
      * Logging the summary data
      */
-    private function logSummaryData(): void
+    private function logSummary(): void
     {
-        // the table is empty from the beginning so $currentCountOfProducts - 0
-        // check the difference to prevent showing the negative number
-        $skipped = $this->summaryData['count'] - count($this->summaryData['updated']);
-        $skipped = $skipped > 0 ? $skipped : 0;
-
         $this->logger->info('Import is finished');
 
-        if ($this->summaryData['errors']) {
-            $this->logger->info(sprintf('%d rows with errors', $this->summaryData['errors']));
+        if ($this->summaryDataErrors) {
+            $this->logger->info(sprintf('%d rows with errors', $this->summaryDataErrors));
         }
 
-        if ($count = count($this->summaryData['created'])) {
-            $this->logger->info(sprintf('%d products created', $count));
+        if ($this->summaryDataCreated) {
+            $this->logger->info(sprintf('%d products created', $this->summaryDataCreated));
         }
 
-        if ($count = count($this->summaryData['updated'])) {
-            $this->logger->info(sprintf('%d products updated', $count));
+        if ($this->summaryDataUpdated) {
+            $this->logger->info(sprintf('%d products updated', $this->summaryDataUpdated));
         }
 
-        if ($skipped) {
-            $this->logger->info(sprintf('%d products skipped', $skipped));
+        if ($this->summaryDataSkipped) {
+            $this->logger->info(sprintf('%d products skipped', $this->summaryDataSkipped));
         }
     }
 }
