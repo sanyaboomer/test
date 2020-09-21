@@ -45,9 +45,9 @@ class CsvReader
     {
         $pdoConn  = $this->createConnection();
 
-        /*$sql = "SET FOREIGN_KEY_CHECKS=0";
+        $sql = "TRUNCATE TABLE csv_product";
         $stmt = $pdoConn->prepare($sql);
-        $stmt->execute();*/
+        $stmt->execute();
 
         $sql = "LOAD DATA 
                     LOCAL INFILE '{$filePath}'

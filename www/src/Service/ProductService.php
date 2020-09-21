@@ -37,4 +37,16 @@ class ProductService
         $product->setSpecialPrice((float)$csvProduct->getSpecialPrice());
         $product->setNormalPrice((float)$csvProduct->getNormalPrice());
     }
+
+    /**
+     * @param Product $product
+     * @param CsvProduct $csvProduct
+     * @return bool
+     */
+    public function isProductEqualCsv(Product $product, CsvProduct $csvProduct): bool
+    {
+        return $product->getDescription() == $csvProduct->getDescription()
+            || $product->getSpecialPrice() == (float)$csvProduct->getSpecialPrice()
+            || $product->getNormalPrice() == (float)$csvProduct->getNormalPrice();
+    }
 }
